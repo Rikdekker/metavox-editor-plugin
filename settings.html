@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaVox Settings</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="vendor/plugins.js"></script>
+</head>
+<body>
+    <div id="metavox-settings">
+        <h3>MetaVox Connection</h3>
+
+        <div class="settings-field">
+            <label for="nextcloud-url">Nextcloud URL</label>
+            <input type="url" id="nextcloud-url" placeholder="https://your-nextcloud.example.com" />
+            <p class="settings-hint">The base URL of your Nextcloud instance (without trailing slash).</p>
+        </div>
+
+        <div class="settings-field">
+            <label for="auth-user">Username (optional)</label>
+            <input type="text" id="auth-user" placeholder="admin" />
+            <p class="settings-hint">Nextcloud username. Only needed if the DocumentServer is on a different domain.</p>
+        </div>
+
+        <div class="settings-field">
+            <label for="auth-token">App Password (optional)</label>
+            <input type="password" id="auth-token" placeholder="xxxxx-xxxxx-xxxxx-xxxxx-xxxxx" />
+            <p class="settings-hint">Generate an app password in Nextcloud: Settings &rarr; Security &rarr; Devices &amp; sessions.</p>
+        </div>
+
+        <div id="settings-status"></div>
+    </div>
+    <script src="settings.js"></script>
+</body>
+</html>

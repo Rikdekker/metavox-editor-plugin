@@ -14,11 +14,9 @@ When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLY
 ## How it works
 
 1. Plugin opens as a right-side panel in the document editor
-2. Detects the Nextcloud file ID from the editor context (URL parameters, referrer)
+2. Detects the Nextcloud file ID from `Asc.plugin.info` (callback URL, document URL)
 3. Calls the MetaVox OCS API to fetch the file's metadata
 4. Renders the metadata fields (labels + values) in the panel
-
-The plugin uses the logged-in user's browser session for authentication — no additional credentials needed.
 
 ## Installation
 
@@ -44,21 +42,40 @@ Install temporarily via browser console while the editor is open:
 Asc.editor.installDeveloperPlugin("https://your-server/path/to/config.json");
 ```
 
+## Configuration
+
+After installation, open the plugin settings (click the MetaVox icon in the toolbar, then access settings):
+
+1. **Nextcloud URL** — The base URL of your Nextcloud instance (e.g., `https://cloud.example.com`)
+2. **Username** (optional) — Nextcloud username, only needed for cross-origin setups
+3. **App Password** (optional) — Generate in Nextcloud: Settings > Security > Devices & sessions
+
+Settings are stored in the browser's `localStorage`.
+
+### Same-domain vs cross-domain
+
+| Setup | Auth method | Configuration |
+|-------|-------------|---------------|
+| Same domain (reverse proxy) | Session cookies | Only set Nextcloud URL |
+| Different domains | App password | Set URL + username + app password |
+
 ## Plugin structure
 
 ```
 metavox-editor-plugin/
-├── config.json          Plugin manifest (panelRight type)
-├── index.html           Panel HTML shell
-├── plugin.js            Core logic: file ID detection + MetaVox API
-├── styles.css           Panel styling
+├── config.json          Plugin manifest (panelRight + settings window)
+├── index.html           Panel HTML with refresh button
+├── plugin.js            Core logic: file ID detection, API, rendering
+├── styles.css           Panel styling (theme-aware)
+├── settings.html        Settings form (Nextcloud URL, credentials)
+├── settings.js          Settings persistence (localStorage)
+├── vendor/
+│   └── plugins.js       ONLYOFFICE plugin SDK (bundled)
 └── resources/
     └── icon.svg         Toolbar icon
 ```
 
 ## Supported field types
-
-All MetaVox field types are rendered:
 
 | Type | Display |
 |------|---------|
@@ -66,22 +83,50 @@ All MetaVox field types are rendered:
 | number | Number |
 | date | Localized date |
 | select | Selected option |
-| multiselect | Comma-separated options |
-| checkbox | Yes / No |
-| url | URL text |
+| multiselect | Pill tags |
+| checkbox | Visual checkmark |
+| url | Clickable link |
 | user | User ID |
 | filelink | File reference |
 
+## API endpoint used
+
+```
+GET /ocs/v2.php/apps/metavox/api/v1/files/{fileId}/metadata?format=json
+```
+
+Response format:
+```json
+{
+  "ocs": {
+    "meta": { "status": "ok", "statuscode": 200 },
+    "data": [
+      {
+        "id": 4,
+        "field_name": "file_gf_status",
+        "field_label": "Status",
+        "field_type": "select",
+        "field_options": ["Open", "Closed"],
+        "is_required": true,
+        "value": "Open"
+      }
+    ]
+  }
+}
+```
+
 ## Current limitations
 
-- **Read-only** — metadata is displayed but cannot be edited from the panel (planned for a future version)
-- **File ID detection** relies on URL parsing — works with the standard ONLYOFFICE Nextcloud connector
-- **Cross-origin**: if the DocumentServer runs on a different domain than Nextcloud, browser CORS policies may block API calls. Ensure the MetaVox OCS API allows cross-origin requests or use a same-domain setup.
+- **Read-only** — metadata is displayed but cannot be edited from the panel (planned for v0.3)
+- **File ID detection** relies on `Asc.plugin.info` URLs — works with the standard ONLYOFFICE/Euro-Office Nextcloud connector
+- **Cross-origin** requires app password — session cookies don't work cross-domain
 
 ## Roadmap
 
-- [ ] **v0.2** — Inline editing of metadata fields from the panel
-- [ ] **v0.3** — OOXML custom properties sync (embed metadata in the document file itself)
+- [x] **v0.1** — Basic scaffold
+- [x] **v0.2** — Settings screen, robust file ID detection, auth support, improved UI
+- [ ] **v0.3** — Inline editing of metadata fields from the panel
+- [ ] **v0.4** — OOXML custom properties sync (embed metadata in the document file itself)
 
 ## License
 

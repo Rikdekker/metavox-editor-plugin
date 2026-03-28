@@ -6,7 +6,7 @@
         "fr": "MetaVox M\u00e9tadonn\u00e9es"
     },
     "guid": "asc.{b5c3e4f2-7a1d-4e8f-9c6b-2d3f5a8e1b7c}",
-    "version": "0.1.0",
+    "version": "0.2.0",
 
     "variations": [
         {
@@ -28,6 +28,28 @@
             "type": "panelRight",
             "buttons": [],
             "size": [300, 600]
+        },
+        {
+            "description": "MetaVox Settings",
+            "descriptionLocale": {
+                "nl": "MetaVox Instellingen",
+                "de": "MetaVox Einstellungen",
+                "fr": "Param\u00e8tres MetaVox"
+            },
+            "url": "settings.html",
+            "icons": ["resources/icon.svg"],
+            "isViewer": false,
+            "EditorsSupport": ["word", "cell", "slide", "pdf"],
+            "isVisual": true,
+            "isModal": true,
+            "isInsideMode": false,
+            "initDataType": "none",
+            "initData": "",
+            "buttons": [
+                { "text": "Save", "primary": true },
+                { "text": "Cancel", "primary": false }
+            ],
+            "size": [400, 300]
         }
     ]
 }

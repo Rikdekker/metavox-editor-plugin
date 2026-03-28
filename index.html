@@ -5,17 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MetaVox Metadata</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://onlyoffice.github.io/sdkjs-plugins/v1/plugins.js"></script>
-    <script src="https://onlyoffice.github.io/sdkjs-plugins/v1/plugins-ui.js"></script>
+    <script src="vendor/plugins.js"></script>
 </head>
 <body>
     <div id="metavox-panel">
         <div class="metavox-header">
-            <h2>MetaVox</h2>
-            <p class="metavox-subtitle">Document Metadata</p>
+            <div class="metavox-header-left">
+                <h2>MetaVox</h2>
+                <p class="metavox-subtitle">Document Metadata</p>
+            </div>
+            <button class="metavox-refresh" onclick="window.metavoxRefresh()" title="Refresh metadata">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+            </button>
         </div>
         <div id="metavox-content">
-            <div class="metavox-message metavox-message-loading">Loading...</div>
+            <div class="metavox-loading">
+                <div class="metavox-spinner"></div>
+                <span>Loading metadata&hellip;</span>
+            </div>
         </div>
     </div>
     <script src="plugin.js"></script>
