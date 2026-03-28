@@ -4,76 +4,31 @@ A document editor plugin that displays [MetaVox](https://gitea.rikdekker.nl/rik/
 
 ## Overview
 
-When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLYOFFICE), this plugin shows the file's MetaVox metadata fields in a panel on the right side of the editor.
+When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLYOFFICE), this plugin shows the file's MetaVox metadata fields in a panel on the right side of the editor. Fields with values are displayed, empty fields show a dash.
 
 **Requires:**
-- Nextcloud with MetaVox app installed
+- Nextcloud with MetaVox app (>= 2.0.0-beta.3)
 - Euro-Office DocumentServer or ONLYOFFICE Document Server
-- The Nextcloud ONLYOFFICE connector app
+- ONLYOFFICE Nextcloud connector app
+- Reverse proxy (Nginx Proxy Manager or plain nginx)
+
+## Quick start
+
+1. Mount the plugin in the DocumentServer container (volume mount)
+2. Configure a reverse proxy that forwards `/metavox-api/` to the Nextcloud MetaVox OCS API
+3. Open a document from Nextcloud → click Plugins → MetaVox Metadata
+
+See [docs/setup.md](docs/setup.md) for detailed instructions.
 
 ## How it works
 
-1. Plugin opens as a right-side panel in the document editor
-2. Detects the Nextcloud file ID from `Asc.plugin.info` (callback URL, document URL)
-3. Calls the MetaVox OCS API to fetch the file's metadata
-4. Renders the metadata fields (labels + values) in the panel
+1. User opens a document from Nextcloud in Euro-Office
+2. Plugin reads `Asc.plugin.info.documentCallbackUrl`
+3. Decodes the JWT token to extract the Nextcloud `fileId`
+4. Fetches metadata via `/metavox-api/files/{fileId}/metadata` (same-origin reverse proxy)
+5. Renders field labels and values in the panel
 
-## Installation
-
-### On Euro-Office / ONLYOFFICE Document Server
-
-Copy the plugin folder to the DocumentServer plugins directory:
-
-```bash
-# Docker deployment
-docker cp metavox-editor-plugin <container>:/var/www/onlyoffice/documentserver/sdkjs-plugins/metavox-editor-plugin
-
-# Or direct installation
-cp -r metavox-editor-plugin /var/www/onlyoffice/documentserver/sdkjs-plugins/
-```
-
-Restart the DocumentServer after installation.
-
-### Development mode
-
-Install temporarily via browser console while the editor is open:
-
-```javascript
-Asc.editor.installDeveloperPlugin("https://your-server/path/to/config.json");
-```
-
-## Configuration
-
-After installation, open the plugin settings (click the MetaVox icon in the toolbar, then access settings):
-
-1. **Nextcloud URL** — The base URL of your Nextcloud instance (e.g., `https://cloud.example.com`)
-2. **Username** (optional) — Nextcloud username, only needed for cross-origin setups
-3. **App Password** (optional) — Generate in Nextcloud: Settings > Security > Devices & sessions
-
-Settings are stored in the browser's `localStorage`.
-
-### Same-domain vs cross-domain
-
-| Setup | Auth method | Configuration |
-|-------|-------------|---------------|
-| Same domain (reverse proxy) | Session cookies | Only set Nextcloud URL |
-| Different domains | App password | Set URL + username + app password |
-
-## Plugin structure
-
-```
-metavox-editor-plugin/
-├── config.json          Plugin manifest (panelRight + settings window)
-├── index.html           Panel HTML with refresh button
-├── plugin.js            Core logic: file ID detection, API, rendering
-├── styles.css           Panel styling (theme-aware)
-├── settings.html        Settings form (Nextcloud URL, credentials)
-├── settings.js          Settings persistence (localStorage)
-├── vendor/
-│   └── plugins.js       ONLYOFFICE plugin SDK (bundled)
-└── resources/
-    └── icon.svg         Toolbar icon
-```
+See [docs/architecture.md](docs/architecture.md) for the full technical overview.
 
 ## Supported field types
 
@@ -89,44 +44,34 @@ metavox-editor-plugin/
 | user | User ID |
 | filelink | File reference |
 
-## API endpoint used
+## Plugin structure
 
 ```
-GET /ocs/v2.php/apps/metavox/api/v1/files/{fileId}/metadata?format=json
+metavox-editor-plugin/
+├── config.json          Plugin manifest (panelRight type)
+├── index.html           Panel HTML with refresh button
+├── plugin.js            Core logic: JWT detection, API, rendering
+├── styles.css           Panel styling (theme-aware)
+├── vendor/
+│   └── plugins.js       ONLYOFFICE plugin SDK (bundled)
+├── resources/
+│   └── icon.svg         Toolbar icon
+└── docs/
+    ├── setup.md          Installation & configuration
+    ├── architecture.md   How it works (developer reference)
+    └── troubleshooting.md Common problems & solutions
 ```
 
-Response format:
-```json
-{
-  "ocs": {
-    "meta": { "status": "ok", "statuscode": 200 },
-    "data": [
-      {
-        "id": 4,
-        "field_name": "file_gf_status",
-        "field_label": "Status",
-        "field_type": "select",
-        "field_options": ["Open", "Closed"],
-        "is_required": true,
-        "value": "Open"
-      }
-    ]
-  }
-}
-```
+## Troubleshooting
 
-## Current limitations
-
-- **Read-only** — metadata is displayed but cannot be edited from the panel (planned for v0.3)
-- **File ID detection** relies on `Asc.plugin.info` URLs — works with the standard ONLYOFFICE/Euro-Office Nextcloud connector
-- **Cross-origin** requires app password — session cookies don't work cross-domain
+See [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Roadmap
 
 - [x] **v0.1** — Basic scaffold
-- [x] **v0.2** — Settings screen, robust file ID detection, auth support, improved UI
+- [x] **v0.2** — File ID detection via JWT, reverse proxy, improved UI
 - [ ] **v0.3** — Inline editing of metadata fields from the panel
-- [ ] **v0.4** — OOXML custom properties sync (embed metadata in the document file itself)
+- [ ] **v0.4** — OOXML custom properties sync (embed metadata in the document)
 
 ## License
 
