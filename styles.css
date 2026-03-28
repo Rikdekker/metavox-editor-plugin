@@ -1,0 +1,116 @@
+:root {
+    --bg-color: #ffffff;
+    --text-color: #333333;
+    --text-secondary: #666666;
+    --border-color: #e0e0e0;
+    --accent-color: #0082c9;
+    --field-bg: #f8f9fa;
+    --empty-color: #999999;
+    --error-color: #c9302c;
+    --warning-color: #ec6e00;
+    --info-color: #0082c9;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-size: 13px;
+    color: var(--text-color);
+    background: var(--bg-color);
+    padding: 0;
+    margin: 0;
+}
+
+#metavox-panel {
+    padding: 16px;
+}
+
+/* Header */
+.metavox-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.metavox-header h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-color);
+    margin: 0 0 2px 0;
+}
+
+.metavox-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* Fields */
+.metavox-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.metavox-field {
+    padding: 10px 12px;
+    background: var(--field-bg);
+    border-radius: 6px;
+}
+
+.metavox-field:hover {
+    background: #f0f1f3;
+}
+
+.metavox-field-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    margin-bottom: 3px;
+}
+
+.metavox-field-value {
+    font-size: 13px;
+    color: var(--text-color);
+    word-break: break-word;
+}
+
+.metavox-field-empty {
+    color: var(--empty-color);
+    font-style: italic;
+}
+
+/* Messages */
+.metavox-message {
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.metavox-message-loading {
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.metavox-message-info {
+    background: #e8f4fd;
+    color: var(--info-color);
+}
+
+.metavox-message-warning {
+    background: #fff3e0;
+    color: var(--warning-color);
+}
+
+.metavox-message-error {
+    background: #fde8e8;
+    color: var(--error-color);
+}

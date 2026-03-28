@@ -1,0 +1,33 @@
+{
+    "name": "MetaVox Metadata",
+    "nameLocale": {
+        "nl": "MetaVox Metadata",
+        "de": "MetaVox Metadaten",
+        "fr": "MetaVox M\u00e9tadonn\u00e9es"
+    },
+    "guid": "asc.{b5c3e4f2-7a1d-4e8f-9c6b-2d3f5a8e1b7c}",
+    "version": "0.1.0",
+
+    "variations": [
+        {
+            "description": "View MetaVox metadata for the current document",
+            "descriptionLocale": {
+                "nl": "Bekijk MetaVox metadata voor het huidige document",
+                "de": "MetaVox-Metadaten f\u00fcr das aktuelle Dokument anzeigen",
+                "fr": "Afficher les m\u00e9tadonn\u00e9es MetaVox du document actuel"
+            },
+            "url": "index.html",
+            "icons": ["resources/icon.svg"],
+            "isViewer": false,
+            "EditorsSupport": ["word", "cell", "slide", "pdf"],
+            "isVisual": true,
+            "isModal": false,
+            "isInsideMode": true,
+            "initDataType": "none",
+            "initData": "",
+            "type": "panelRight",
+            "buttons": [],
+            "size": [300, 600]
+        }
+    ]
+}
