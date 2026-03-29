@@ -2,41 +2,76 @@
 
 ## Overview
 
-The MetaVox Editor Plugin is an ONLYOFFICE/Euro-Office document editor plugin that displays MetaVox metadata in a right-side panel. It communicates with the MetaVox Nextcloud app through a same-origin reverse proxy.
+The MetaVox Editor Plugin is an ONLYOFFICE/Euro-Office document editor plugin that displays and edits MetaVox metadata in a right-side panel.
 
-## Data flow
+## Current data flow (reverse proxy)
+
+> **Note:** This is the interim architecture. The planned architecture uses JWT-based authentication directly with Nextcloud, eliminating the reverse proxy. See [security.md](security.md#planned-jwt-based-authentication).
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Browser                                                      │
-│                                                              │
-│  ┌──────────────────┐    ┌──────────────────────────────┐   │
-│  │ Euro-Office       │    │ MetaVox Plugin (panelRight)  │   │
-│  │ Document Editor   │    │                              │   │
-│  │                   │    │  1. Read Asc.plugin.info     │   │
-│  │ Provides:         │───▶│  2. Decode JWT from callback │   │
-│  │ - plugin.info     │    │  3. Extract fileId           │   │
-│  │ - documentCallback│    │  4. GET /metavox-api/...     │   │
-│  └──────────────────┘    └──────────┬───────────────────┘   │
-│                                      │ same-origin           │
-└──────────────────────────────────────┼──────────────────────┘
-                                       │
-                         ┌─────────────▼─────────────┐
-                         │ Reverse Proxy (NPM/nginx)  │
-                         │ euro-office.example.com     │
-                         │                             │
-                         │ /metavox-api/* ──────────┐  │
-                         │   + Basic auth header    │  │
-                         │   + OCS-APIREQUEST       │  │
-                         └─────────────────────────┼──┘
-                                                    │
-                         ┌─────────────────────────▼──┐
-                         │ Nextcloud + MetaVox         │
-                         │ nextcloud.example.com       │
-                         │                             │
-                         │ /ocs/v2.php/apps/metavox/   │
-                         │   api/v1/files/{id}/metadata│
-                         └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Browser                                                       │
+│                                                               │
+│  ┌──────────────────┐    ┌───────────────────────────────┐   │
+│  │ Euro-Office       │    │ MetaVox Plugin (panelRight)   │   │
+│  │ Document Editor   │    │                               │   │
+│  │                   │    │  1. Read Asc.plugin.info      │   │
+│  │ Provides:         │───▶│  2. Decode JWT from callback  │   │
+│  │ - plugin.info     │    │  3. Extract fileId + filePath │   │
+│  │ - documentCallback│    │  4. Resolve groupfolder ID    │   │
+│  └──────────────────┘    │  5. GET /metavox-api/...      │   │
+│                           └──────────────┬────────────────┘   │
+│                                           │ same-origin        │
+└───────────────────────────────────────────┼───────────────────┘
+                                            │
+                          ┌─────────────────▼──────────────┐
+                          │ Reverse Proxy (NPM/nginx)       │
+                          │ euro-office.example.com          │
+                          │                                  │
+                          │ /metavox-api/* ───────────────┐  │
+                          │   + Basic auth header         │  │
+                          │   + OCS-APIREQUEST            │  │
+                          └──────────────────────────────┼──┘
+                                                          │
+                          ┌──────────────────────────────▼──┐
+                          │ Nextcloud + MetaVox              │
+                          │ nextcloud.example.com            │
+                          │                                  │
+                          │ /ocs/v2.php/apps/metavox/        │
+                          │   api/v1/...                     │
+                          └─────────────────────────────────┘
+```
+
+## Planned data flow (JWT authentication)
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Browser                                                       │
+│                                                               │
+│  ┌──────────────────┐    ┌───────────────────────────────┐   │
+│  │ Euro-Office       │    │ MetaVox Plugin (panelRight)   │   │
+│  │ Document Editor   │    │                               │   │
+│  │                   │    │  1. Read Asc.plugin.info      │   │
+│  │ Provides:         │───▶│  2. Extract JWT token         │   │
+│  │ - plugin.info     │    │  3. Decode payload (fileId)   │   │
+│  │ - documentCallback│    │  4. GET /ocs/.../editor/...   │   │
+│  └──────────────────┘    │     ?doc=<JWT>                │   │
+│                           └──────────────┬────────────────┘   │
+│                                           │ cross-origin       │
+│                                           │ (no preflight —    │
+└───────────────────────────────────────────│  simple GET)       │
+                                            │
+                          ┌─────────────────▼──────────────┐
+                          │ Nextcloud + MetaVox             │
+                          │ nextcloud.example.com           │
+                          │                                 │
+                          │ EditorController:               │
+                          │   1. Validate JWT (HS256)       │
+                          │   2. Check fileId match         │
+                          │   3. Return metadata            │
+                          │                                 │
+                          │ No proxy needed.                │
+                          └─────────────────────────────────┘
 ```
 
 ## File ID detection
@@ -47,7 +82,7 @@ The ONLYOFFICE Nextcloud connector sets a `documentCallbackUrl` in the editor co
 https://nextcloud.example.com/index.php/apps/onlyoffice/track?doc=<JWT>
 ```
 
-The JWT payload (base64-encoded, no signature verification needed) contains:
+The JWT payload (base64-encoded) contains:
 
 ```json
 {
@@ -60,29 +95,37 @@ The JWT payload (base64-encoded, no signature verification needed) contains:
 }
 ```
 
-The plugin extracts `fileId` by decoding the JWT payload:
+The plugin extracts `fileId` and `filePath` by decoding the JWT payload (no signature verification needed client-side — the server validates the full JWT).
 
-```javascript
-var parts = jwt.split('.');
-var payload = JSON.parse(atob(parts[1]));
-var fileId = payload.fileId;
-```
+## Groupfolder detection
 
-## API communication
+MetaVox stores metadata per groupfolder. The plugin needs the groupfolder ID to fetch correct metadata. Detection flow:
 
-The plugin makes a single GET request to fetch metadata:
+1. Extract `filePath` from JWT (e.g., `/Demo 3/Reports/file.docx`)
+2. Take the first path segment as the groupfolder name (`Demo 3`)
+3. Fetch groupfolders list from API
+4. Match the name to find the groupfolder ID
+5. Use the groupfolder-scoped metadata endpoint
 
-```
-GET /metavox-api/files/{fileId}/metadata?format=json
-```
+## API endpoints used
 
-This is a relative URL (same-origin). The reverse proxy forwards it to:
+### Current (via proxy)
 
-```
-GET /ocs/v2.php/apps/metavox/api/v1/files/{fileId}/metadata?format=json
-```
+| Method | Proxy URL | Nextcloud URL | Purpose |
+|--------|-----------|---------------|---------|
+| GET | `/metavox-api/groupfolders` | `/ocs/.../api/v1/groupfolders` | List groupfolders |
+| GET | `/metavox-api/groupfolders/{gfId}/metadata` | `/ocs/.../api/v1/groupfolders/{gfId}/metadata` | Team folder metadata |
+| GET | `/metavox-api/groupfolders/{gfId}/files/{fileId}/metadata` | `/ocs/.../api/v1/groupfolders/{gfId}/files/{fileId}/metadata` | File metadata |
+| POST | `/metavox-api/groupfolders/{gfId}/files/{fileId}/metadata` | `/ocs/.../api/v1/groupfolders/{gfId}/files/{fileId}/metadata` | Save file metadata |
 
-The proxy adds `Authorization` and `OCS-APIREQUEST` headers server-side.
+### Planned (direct, JWT-authenticated)
+
+| Method | URL | Purpose |
+|--------|-----|---------|
+| GET | `/ocs/.../api/v1/editor/groupfolders?doc=<JWT>` | List groupfolders |
+| GET | `/ocs/.../api/v1/editor/groupfolders/{gfId}/metadata?doc=<JWT>` | Team folder metadata |
+| GET | `/ocs/.../api/v1/editor/files/{fileId}/metadata?doc=<JWT>` | File metadata |
+| POST | `/ocs/.../api/v1/editor/files/{fileId}/metadata?doc=<JWT>` | Save file metadata |
 
 ### Response format
 
@@ -98,6 +141,7 @@ The proxy adds `Authorization` and `OCS-APIREQUEST` headers server-side.
         "field_type": "select",
         "field_options": ["Finance", "HR", "IT", "R&D"],
         "is_required": false,
+        "applies_to_groupfolder": 0,
         "value": "R&D"
       }
     ]
@@ -105,53 +149,67 @@ The proxy adds `Authorization` and `OCS-APIREQUEST` headers server-side.
 }
 ```
 
-Each field object contains the definition (name, label, type, options, required) and the current value for this file.
-
 ## Rendering
+
+Fields are split into two sections:
+
+1. **Team folder** (read-only, `applies_to_groupfolder=1`) — collapsible, collapsed by default
+2. **Document Metadata** (editable, `applies_to_groupfolder=0`) — click-to-edit inline
 
 Field values are rendered based on `field_type`:
 
-| Type | Renderer |
-|------|----------|
-| `text`, `textarea`, `number` | Plain text |
-| `date` | `toLocaleDateString()` |
-| `select` | Plain text |
-| `multiselect` | Split on `;#` separator, rendered as pill tags |
-| `checkbox` | Checkmark (✓) or cross (✗) with colored background |
-| `url` | Clickable `<a>` link |
-| `user` | Plain text (user ID) |
-| `filelink` | Plain text (file reference) |
+| Type | Read display | Edit control |
+|------|-------------|--------------|
+| `text`, `textarea` | Plain text | `<input>` / `<textarea>` |
+| `number` | Number | `<input type="number">` |
+| `date` | Localized date | `<input type="date">` |
+| `select` | Plain text | `<select>` with options |
+| `multiselect` | Pill tags | Checkboxes |
+| `checkbox` | ✓ / ✗ toggle | Direct click toggle |
+| `url` | Clickable link | `<input type="url">` |
+| `user` | User ID | `<input type="text">` |
+| `filelink` | File reference | `<input type="text">` |
 
-Empty values (`null`, `""`) display an em dash (—) with italic styling.
+## Auto-open and user preferences
+
+The plugin supports automatic opening when a document is loaded. This requires two layers:
+
+### Server-side: autostart
+
+The DocumentServer config (`local.json`) includes the plugin GUID in `services.CoAuthoring.plugins.autostart`. This causes the DocumentServer to initialize the plugin automatically when any document opens.
+
+### Per-user: localStorage toggle
+
+When the plugin initializes, it checks `localStorage` for a `metavox_auto_show` preference:
+
+- **`true`** (default) — plugin loads metadata normally
+- **`false`** — plugin shows a disabled message; user can re-enable via the toggle
+
+The toggle switch is rendered in the plugin header. Clicking it updates `localStorage` immediately. The preference persists per browser/device (localStorage is scoped to the DocumentServer domain).
+
+```
+init()
+  → check localStorage('metavox_auto_show')
+  → if 'false': show disabled message, stop
+  → if 'true' or not set: resolve groupfolder, load metadata
+```
 
 ## ONLYOFFICE Plugin API
-
-The plugin uses these ONLYOFFICE APIs:
 
 | API | Usage |
 |-----|-------|
 | `window.Asc.plugin.init` | Entry point — called when the plugin panel opens |
 | `window.Asc.plugin.info` | Contains `documentCallbackUrl`, `documentTitle`, `userId`, `lang`, `theme` |
-| `window.Asc.plugin.onThemeChanged` | Called when the editor theme changes (dark/light) — updates CSS variables |
-| `window.Asc.plugin.onExternalMouseUp` | Required stub (prevents plugin from stealing mouse events) |
+| `window.Asc.plugin.onThemeChanged` | Called when the editor theme changes — updates CSS variables |
+| `window.Asc.plugin.onExternalMouseUp` | Required stub |
 
 ## File overview
 
 | File | Responsibility |
 |------|---------------|
-| `config.json` | Plugin manifest — defines `panelRight` variation, supported editors, icon |
-| `plugin.js` | Core logic: JWT decoding, API fetch, DOM rendering, theme support |
-| `index.html` | Panel HTML shell with header, refresh button, content container |
-| `styles.css` | Styling with CSS variables for theme support |
-| `settings.html` | Legacy settings form (not used with proxy setup) |
-| `settings.js` | Legacy settings persistence (not used with proxy setup) |
+| `config.json` | Plugin manifest — `panelRight` variation, `isActivated: true`, supported editors |
+| `plugin.js` | Core: JWT decoding, groupfolder detection, API fetch/save, inline editing, rendering |
+| `index.html` | Panel HTML shell with header and refresh button |
+| `styles.css` | Styling with CSS variables for editor theme support |
 | `vendor/plugins.js` | Bundled ONLYOFFICE plugin SDK |
-| `resources/icon.svg` | Toolbar icon (document with lines) |
-
-## Why a reverse proxy?
-
-The plugin runs in an iframe on the DocumentServer domain (e.g., `euro-office.example.com`). The MetaVox API lives on the Nextcloud domain (e.g., `nextcloud.example.com`). This is cross-origin.
-
-Cross-origin requests require a CORS preflight (OPTIONS request). Nextcloud returns `405 Method Not Allowed` on OPTIONS — this is a known Nextcloud limitation. Without a successful preflight, the browser blocks the entire request.
-
-The reverse proxy solves this by making the API call same-origin from the plugin's perspective. The proxy handles authentication server-side, so no credentials are exposed in the browser.
+| `resources/icon.svg` | Toolbar icon |

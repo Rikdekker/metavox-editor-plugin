@@ -105,6 +105,35 @@ echo -n "username:new-app-password" | base64
 
 ---
 
+## Plugin shows "Auto-open is disabled"
+
+**Symptoms:** Panel shows an info message about auto-open being disabled instead of metadata.
+
+**Cause:** The user previously toggled auto-open off. The preference is stored in the browser's `localStorage`.
+
+**Fix:**
+- Click the **toggle switch** in the plugin header to re-enable auto-open
+- Or clear `localStorage` for the DocumentServer domain in browser DevTools:
+  ```javascript
+  localStorage.removeItem('metavox_auto_show')
+  ```
+
+---
+
+## Plugin does not auto-open when loading a document
+
+**Symptoms:** The plugin is installed but the panel does not open automatically. Users must click Plugins → MetaVox Metadata manually.
+
+**Causes:**
+- The plugin GUID is not in the DocumentServer's `autostart` config
+- The autostart config was lost after a container restart
+
+**Fix:**
+- Follow the [autostart setup](setup.md#step-1b-auto-open-the-plugin-optional) instructions
+- After container restart, re-apply the merge command to inject the autostart config into `local.json`
+
+---
+
 ## "Access denied (HTTP 403)"
 
 **Symptoms:** Panel shows an access denied error.

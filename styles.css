@@ -65,6 +65,60 @@ body {
     margin: 0;
 }
 
+/* ─── Auto-show Toggle ──────────────────────────────────────────── */
+
+.metavox-auto-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 4px 0 0;
+    cursor: pointer;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.metavox-auto-toggle:hover {
+    color: var(--text-color);
+}
+
+.metavox-toggle-track {
+    display: inline-block;
+    width: 28px;
+    height: 16px;
+    border-radius: 8px;
+    background: var(--border-color);
+    position: relative;
+    transition: background 0.2s;
+}
+
+.metavox-toggle-track.metavox-toggle-on {
+    background: var(--accent-color);
+}
+
+.metavox-toggle-thumb {
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: left 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.metavox-toggle-on .metavox-toggle-thumb {
+    left: 14px;
+}
+
+.metavox-toggle-label {
+    user-select: none;
+    margin: 0;
+}
+
 .metavox-refresh {
     background: none;
     border: 1px solid var(--border-color);
@@ -83,32 +137,64 @@ body {
     border-color: var(--accent-color);
 }
 
+/* ─── Sections ──────────────────────────────────────────────────── */
+
+.metavox-section {
+    margin-bottom: 4px;
+}
+
+.metavox-section-header {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-color);
+    padding: 8px 0 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.metavox-collapse-icon {
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.metavox-section-gf .metavox-section-content {
+    background: #eef6fb;
+    border-left: 3px solid var(--accent-color);
+    border-radius: 4px;
+    padding: 8px 12px;
+}
+
+.metavox-separator {
+    height: 1px;
+    background: var(--border-color);
+    margin: 12px 0;
+}
+
 /* ─── Fields ────────────────────────────────────────────────────── */
 
 .metavox-fields {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
 }
 
 .metavox-field {
-    padding: 10px 12px;
-    background: var(--field-bg);
-    border-radius: 6px;
-    transition: background 0.1s;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
 }
 
-.metavox-field:hover {
-    background: #eef0f2;
+.metavox-field:last-child {
+    border-bottom: none;
 }
 
 .metavox-field-label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
 
 .metavox-required {
@@ -117,14 +203,14 @@ body {
 }
 
 .metavox-field-value {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--text-color);
     word-break: break-word;
+    min-height: 20px;
 }
 
 .metavox-field-empty {
     color: var(--empty-color);
-    font-style: italic;
 }
 
 /* ─── Field Type Renderers ──────────────────────────────────────── */
@@ -162,12 +248,102 @@ body {
 
 .metavox-tag {
     display: inline-block;
-    background: #e0e7f1;
-    color: #3b5998;
+    background: #ededed;
+    color: var(--text-color);
     padding: 2px 8px;
     border-radius: 10px;
     font-size: 12px;
-    margin: 1px 3px 1px 0;
+    margin: 2px 4px 2px 0;
+}
+
+/* ─── Editable Fields ───────────────────────────────────────────── */
+
+.metavox-editable {
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.metavox-editable:hover {
+    background: #e8edf2;
+}
+
+.metavox-editing {
+    cursor: default;
+}
+
+.metavox-editing:hover {
+    background: transparent;
+}
+
+.metavox-editor {
+    width: 100%;
+}
+
+.metavox-edit-input,
+.metavox-edit-select {
+    width: 100%;
+    padding: 5px 7px;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text-color);
+    background: var(--bg-color);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 130, 201, 0.15);
+}
+
+.metavox-edit-input:focus,
+.metavox-edit-select:focus {
+    border-color: var(--accent-color);
+}
+
+.metavox-multiselect-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.metavox-ms-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 0;
+}
+
+.metavox-ms-option input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+/* Save states */
+.metavox-saving-field {
+    color: var(--text-secondary);
+    font-style: italic;
+    font-size: 12px;
+}
+
+.metavox-saving {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.metavox-save-success {
+    animation: metavox-flash-green 1.2s ease;
+}
+
+@keyframes metavox-flash-green {
+    0% { background: rgba(45, 138, 62, 0.15); }
+    100% { background: transparent; }
+}
+
+.metavox-field-error {
+    font-size: 11px;
+    color: var(--error-color);
+    margin-top: 4px;
 }
 
 /* ─── Loading ───────────────────────────────────────────────────── */
