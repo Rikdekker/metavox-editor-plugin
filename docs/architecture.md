@@ -4,6 +4,8 @@
 
 The MetaVox Editor Plugin is an ONLYOFFICE/Euro-Office document editor plugin that displays and edits MetaVox metadata in a right-side panel.
 
+![Plugin panel with metadata](../screenshots/metavox-plugin.png)
+
 ## Current data flow (reverse proxy)
 
 > **Note:** This is the interim architecture. The planned architecture uses JWT-based authentication directly with Nextcloud, eliminating the reverse proxy. See [security.md](security.md#planned-jwt-based-authentication).

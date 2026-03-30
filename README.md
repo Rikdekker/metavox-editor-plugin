@@ -1,10 +1,14 @@
 # MetaVox Editor Plugin
 
-A document editor plugin that displays [MetaVox](https://gitea.rikdekker.nl/rik/MetaVox) metadata in a right-side panel when editing documents through Euro-Office or ONLYOFFICE.
+A document editor plugin that displays and edits [MetaVox](https://github.com/Rikdekker/MetaVox) metadata in a right-side panel when editing documents through Euro-Office or ONLYOFFICE.
+
+![MetaVox Editor Plugin](screenshots/metavox-plugin.png)
 
 ## Overview
 
-When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLYOFFICE), this plugin shows the file's MetaVox metadata fields in a panel on the right side of the editor. Fields with values are displayed, empty fields show a dash.
+When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLYOFFICE), this plugin shows the file's MetaVox metadata fields in a panel on the right side of the editor. Click any value to edit it inline.
+
+![Inline editing](screenshots/metavox-editing.gif)
 
 **Requires:**
 - Nextcloud with MetaVox app (>= 2.0.0-beta.3)

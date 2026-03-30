@@ -195,6 +195,8 @@ You should get a JSON response with metadata fields.
 3. Click **MetaVox Metadata**
 4. The right panel should show the document's metadata fields
 
+![Plugin showing metadata](../screenshots/metavox-plugin.png)
+
 ## Development: disable caching
 
 The DocumentServer serves plugin files with `Cache-Control: public, max-age=31536000, immutable`. During development, patch the nginx config inside the container:
