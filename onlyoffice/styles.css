@@ -173,13 +173,16 @@ body {
     margin: 12px 0;
 }
 
-/* Document properties: read-only section sourced from the file's own ODF
-   metadata (travels with the document). Header is not collapsible. */
-.metavox-section-docprops .metavox-section-header {
+/* Read-only sections sourced from the document file itself (embedded MetaVox
+   metadata + the document's own ODF core properties). Headers are not
+   collapsible and values are shown muted. */
+.metavox-section-docprops .metavox-section-header,
+.metavox-section-embedded .metavox-section-header {
     cursor: default;
 }
 
-.metavox-section-docprops .metavox-field-value {
+.metavox-section-docprops .metavox-field-value,
+.metavox-section-embedded .metavox-field-value {
     color: var(--text-secondary);
 }
 

@@ -41,8 +41,11 @@
     //
     // ApiCore exposes a fixed, enumerable set of getters (verified against the
     // Euro-Office v9.3.1 API surface). ApiCustomProperties only supports
-    // Get(name)/Add(name,value) — no enumeration — so metavox:-prefixed custom
-    // props are read in Phase 2 once the DB supplies the field names.
+    // Get(name)/Add(name,value) — no enumeration. To show the MetaVox metadata
+    // that the server embedded as metavox:<field> custom properties, we read a
+    // single known index key (metavox:__index) — a JSON map of {field: label}
+    // written alongside the values — then Get() each field by name. This makes
+    // the embedded metadata visible JWT-free, straight from the document.
 
     // Standard properties to surface, in display order.
     // key = ApiCore getter suffix, label = panel label.
@@ -71,18 +74,36 @@
             var injected = JSON.stringify({ editorType: editorType, props: CORE_PROPERTIES });
 
             var commandBody = 'var __cfg = ' + injected + ';' +
-                'var core = null;' +
+                'var doc = null, core = null, custom = null;' +
                 'try {' +
-                '  if (__cfg.editorType === "cell") { core = Api.GetCore(); }' +
-                '  else if (__cfg.editorType === "slide") { core = Api.GetPresentation().GetCore(); }' +
-                '  else { core = Api.GetDocument().GetCore(); }' +
-                '} catch (e) { core = null; }' +
-                'var out = {};' +
+                '  if (__cfg.editorType === "cell") { doc = Api; }' +
+                '  else if (__cfg.editorType === "slide") { doc = Api.GetPresentation(); }' +
+                '  else { doc = Api.GetDocument(); }' +
+                '} catch (e) { doc = null; }' +
+                'try { core = doc ? doc.GetCore() : null; } catch (e) { core = null; }' +
+                'try { custom = doc ? doc.GetCustomProperties() : null; } catch (e) { custom = null; }' +
+                'var out = { core: {}, metavox: [] };' +
                 'if (core) {' +
                 '  for (var i = 0; i < __cfg.props.length; i++) {' +
                 '    var k = __cfg.props[i].key;' +
                 '    try { var v = core["Get" + k] ? core["Get" + k]() : null;' +
-                '      if (v !== null && v !== undefined && v !== "") { out[k] = String(v); } } catch (e) {}' +
+                '      if (v !== null && v !== undefined && v !== "") { out.core[k] = String(v); } } catch (e) {}' +
+                '  }' +
+                '}' +
+                // Read the metavox: custom properties via the embedded index.
+                'if (custom) {' +
+                '  var idx = null;' +
+                '  try { idx = custom.Get("metavox:__index"); } catch (e) { idx = null; }' +
+                '  if (idx) {' +
+                '    var map = null; try { map = JSON.parse(idx); } catch (e) { map = null; }' +
+                '    if (map) {' +
+                '      for (var name in map) { if (!map.hasOwnProperty(name)) continue;' +
+                '        var val = null; try { val = custom.Get("metavox:" + name); } catch (e) { val = null; }' +
+                '        if (val !== null && val !== undefined && val !== "") {' +
+                '          out.metavox.push({ name: name, label: String(map[name] || name), value: String(val) });' +
+                '        }' +
+                '      }' +
+                '    }' +
                 '  }' +
                 '}' +
                 'return JSON.stringify(out);';
@@ -320,19 +341,35 @@
     function renderPanel(container, docProps, dbFields, dbError) {
         container.innerHTML = '';
 
-        renderDocumentProperties(container, docProps);
+        var core = (docProps && docProps.core) || {};
+        var embedded = (docProps && docProps.metavox) || [];
+        var hasCore = Object.keys(core).length > 0;
+        var hasEmbedded = embedded.length > 0;
+        var anyAbove = false;
 
-        var hasDocProps = docProps && Object.keys(docProps).length > 0;
+        // 1. MetaVox metadata embedded in the document (read JWT-free via the
+        //    custom-property index). This is the metadata that travels with the file.
+        if (hasEmbedded) {
+            renderEmbeddedMetavox(container, embedded);
+            anyAbove = true;
+        }
 
+        // 2. The document's own standard (core) properties.
+        if (hasCore) {
+            if (anyAbove) container.appendChild(makeSeparator());
+            renderCoreProperties(container, core);
+            anyAbove = true;
+        }
+
+        // 3. The MetaVox database fields (live, editable) — needs the API (JWT phase).
         if (dbFields && dbFields.length > 0) {
-            if (hasDocProps) container.appendChild(makeSeparator());
+            if (anyAbove) container.appendChild(makeSeparator());
             renderMetadata(container, dbFields);
-        } else if (dbError) {
-            // API not reachable yet (Phase 2 wires this up). Keep it quiet.
-            if (hasDocProps) container.appendChild(makeSeparator());
+        } else if (dbError && !hasEmbedded) {
+            // Only nag about the DB when we couldn't show embedded metadata either.
+            if (anyAbove) container.appendChild(makeSeparator());
             showInlineNote(container, 'MetaVox database not connected.');
-        } else if (!hasDocProps) {
-            // Nothing from either source.
+        } else if (!anyAbove) {
             showMessage(container, 'No metadata available for this document.', 'info');
         }
     }
@@ -343,10 +380,28 @@
         return sep;
     }
 
-    // Read-only section listing the document's own ODF core properties.
-    function renderDocumentProperties(container, props) {
-        if (!props || Object.keys(props).length === 0) return;
+    // Section: MetaVox metadata embedded in the document file (read-only here;
+    // editing arrives with the JWT/DB phase). Each item: {name, label, value}.
+    function renderEmbeddedMetavox(container, items) {
+        var section = document.createElement('div');
+        section.className = 'metavox-section metavox-section-embedded';
 
+        var header = document.createElement('div');
+        header.className = 'metavox-section-header';
+        header.textContent = 'MetaVox metadata';
+        section.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'metavox-fields';
+        for (var i = 0; i < items.length; i++) {
+            list.appendChild(makeReadonlyRow(items[i].label || items[i].name, items[i].value));
+        }
+        section.appendChild(list);
+        container.appendChild(section);
+    }
+
+    // Read-only section listing the document's own ODF core properties.
+    function renderCoreProperties(container, core) {
         var section = document.createElement('div');
         section.className = 'metavox-section metavox-section-docprops';
 
@@ -357,29 +412,29 @@
 
         var list = document.createElement('div');
         list.className = 'metavox-fields';
-
         for (var i = 0; i < CORE_PROPERTIES.length; i++) {
             var def = CORE_PROPERTIES[i];
-            if (!Object.prototype.hasOwnProperty.call(props, def.key)) continue;
-
-            var row = document.createElement('div');
-            row.className = 'metavox-field';
-
-            var label = document.createElement('div');
-            label.className = 'metavox-field-label';
-            label.textContent = def.label;
-            row.appendChild(label);
-
-            var valueEl = document.createElement('div');
-            valueEl.className = 'metavox-field-value';
-            valueEl.textContent = props[def.key];
-            row.appendChild(valueEl);
-
-            list.appendChild(row);
+            if (!Object.prototype.hasOwnProperty.call(core, def.key)) continue;
+            list.appendChild(makeReadonlyRow(def.label, core[def.key]));
         }
-
         section.appendChild(list);
         container.appendChild(section);
+    }
+
+    function makeReadonlyRow(labelText, valueText) {
+        var row = document.createElement('div');
+        row.className = 'metavox-field';
+
+        var label = document.createElement('div');
+        label.className = 'metavox-field-label';
+        label.textContent = labelText;
+        row.appendChild(label);
+
+        var valueEl = document.createElement('div');
+        valueEl.className = 'metavox-field-value';
+        valueEl.textContent = valueText;
+        row.appendChild(valueEl);
+        return row;
     }
 
     function showInlineNote(container, text) {
