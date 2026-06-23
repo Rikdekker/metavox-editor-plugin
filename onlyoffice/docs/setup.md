@@ -24,8 +24,11 @@ services:
     image: ghcr.io/euro-office/documentserver:latest
     volumes:
       # ... existing volumes ...
-      - ./metavox-editor-plugin:/var/www/onlyoffice/documentserver/sdkjs-plugins/metavox-editor-plugin:ro
+      - ./metavox-editor-plugin/onlyoffice:/var/www/onlyoffice/documentserver/sdkjs-plugins/metavox-editor-plugin:ro
 ```
+
+> **Note:** mount the repo's `onlyoffice/` subfolder (the ONLYOFFICE plugin lives there since
+> the repo was split per editor platform). The container path stays `metavox-editor-plugin`.
 
 Place the plugin files next to the `docker-compose.yml`:
 
@@ -34,11 +37,12 @@ euro-office/
 ├── docker-compose.yml
 ├── .env
 └── metavox-editor-plugin/
-    ├── config.json
-    ├── index.html
-    ├── plugin.js
-    ├── styles.css
-    └── ...
+    └── onlyoffice/
+        ├── config.json
+        ├── index.html
+        ├── plugin.js
+        ├── styles.css
+        └── ...
 ```
 
 Then restart the container:
@@ -50,7 +54,7 @@ docker compose down && docker compose up -d
 ### Direct installation (non-Docker)
 
 ```bash
-cp -r metavox-editor-plugin /var/www/onlyoffice/documentserver/sdkjs-plugins/
+cp -r metavox-editor-plugin/onlyoffice /var/www/onlyoffice/documentserver/sdkjs-plugins/metavox-editor-plugin
 ```
 
 Restart the DocumentServer service after copying.

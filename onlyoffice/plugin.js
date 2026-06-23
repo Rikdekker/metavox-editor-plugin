@@ -32,6 +32,74 @@
     window.Asc.plugin.onExternalMouseUp = function () {};
     window.Asc.plugin.onThemeChanged = function (theme) { applyTheme(theme); };
 
+    // ─── Document Properties (ODF, read via editor API — no auth) ───────
+    //
+    // Reads the document's own standard (core) properties through the
+    // ONLYOFFICE/Euro-Office Automation API. On save to ODF these live in
+    // meta.xml as dc:/meta: elements, so they travel with the file and stay
+    // readable in LibreOffice without MetaVox (open-standards, anti-lock-in).
+    //
+    // ApiCore exposes a fixed, enumerable set of getters (verified against the
+    // Euro-Office v9.3.1 API surface). ApiCustomProperties only supports
+    // Get(name)/Add(name,value) — no enumeration — so metavox:-prefixed custom
+    // props are read in Phase 2 once the DB supplies the field names.
+
+    // Standard properties to surface, in display order.
+    // key = ApiCore getter suffix, label = panel label.
+    var CORE_PROPERTIES = [
+        { key: 'Title', label: 'Title' },
+        { key: 'Subject', label: 'Subject' },
+        { key: 'Description', label: 'Description' },
+        { key: 'Keywords', label: 'Keywords' },
+        { key: 'Category', label: 'Category' },
+        { key: 'ContentStatus', label: 'Status' },
+        { key: 'Creator', label: 'Author' },
+        { key: 'LastModifiedBy', label: 'Last modified by' },
+        { key: 'Language', label: 'Language' }
+    ];
+
+    // Reads core document properties via callCommand. The command body runs
+    // inside the editor (has the global Api); its return value is delivered to
+    // the callback. callCommand's value-return path is used here — if a build
+    // does not support it the callback receives null and the section is hidden.
+    function readDocumentProperties(callback) {
+        try {
+            var editorType = (window.Asc.plugin.info && window.Asc.plugin.info.editorType) || 'word';
+            // The command body is serialized and executed in the editor context.
+            // It must be self-contained (no closure over plugin-side vars), so we
+            // inject the editorType + property list as a JSON literal.
+            var injected = JSON.stringify({ editorType: editorType, props: CORE_PROPERTIES });
+
+            var commandBody = 'var __cfg = ' + injected + ';' +
+                'var core = null;' +
+                'try {' +
+                '  if (__cfg.editorType === "cell") { core = Api.GetCore(); }' +
+                '  else if (__cfg.editorType === "slide") { core = Api.GetPresentation().GetCore(); }' +
+                '  else { core = Api.GetDocument().GetCore(); }' +
+                '} catch (e) { core = null; }' +
+                'var out = {};' +
+                'if (core) {' +
+                '  for (var i = 0; i < __cfg.props.length; i++) {' +
+                '    var k = __cfg.props[i].key;' +
+                '    try { var v = core["Get" + k] ? core["Get" + k]() : null;' +
+                '      if (v !== null && v !== undefined && v !== "") { out[k] = String(v); } } catch (e) {}' +
+                '  }' +
+                '}' +
+                'return JSON.stringify(out);';
+
+            // eslint-disable-next-line no-new-func
+            var command = new Function(commandBody);
+
+            window.Asc.plugin.callCommand(command, false, false, function (result) {
+                var parsed = null;
+                try { parsed = result ? JSON.parse(result) : null; } catch (e) { parsed = null; }
+                callback(parsed);
+            });
+        } catch (e) {
+            callback(null);
+        }
+    }
+
     // ─── JWT + Groupfolder Detection ──────────────────────────────────
 
     function getJwtPayload() {
@@ -192,39 +260,133 @@
 
         showLoading(container);
 
-        // Fetch both groupfolder metadata and file metadata in parallel
-        var gfFields = [];
-        var fileFields = [];
-        var done = 0;
-        var totalCalls = currentGroupfolderId ? 2 : 1;
+        // Two independent sources, rendered side by side:
+        //  - Document properties: the file's own ODF core properties (always
+        //    available via the editor API, no auth, travel with the document).
+        //  - MetaVox database fields: requires the API (Phase 2). A failure
+        //    here is non-fatal — we still show the document properties.
+        var docProps = null;
+        var dbFields = null;     // null = still loading / failed; [] = loaded empty
+        var dbError = null;
+        var docPropsDone = false;
+        var dbDone = false;
 
-        function checkDone() {
-            done++;
-            if (done < totalCalls) return;
-            // Combine: groupfolder fields first, then item fields
-            currentFields = gfFields.concat(fileFields);
-            renderMetadata(container, currentFields);
+        function renderIfReady() {
+            if (!docPropsDone || !dbDone) return;
+            renderPanel(container, docProps, dbFields, dbError);
         }
 
-        // 1. Groupfolder-level metadata (team folder info)
+        // 1. Document's own ODF properties (via editor API)
+        readDocumentProperties(function (props) {
+            docProps = props;
+            docPropsDone = true;
+            renderIfReady();
+        });
+
+        // 2. MetaVox database fields (groupfolder + file level)
+        var gfFields = [];
+        var fileFields = [];
+        var dbCallsDone = 0;
+        var dbTotalCalls = currentGroupfolderId ? 2 : 1;
+        var anyDbError = null;
+
+        function dbCheckDone() {
+            dbCallsDone++;
+            if (dbCallsDone < dbTotalCalls) return;
+            dbFields = gfFields.concat(fileFields);
+            currentFields = dbFields;
+            dbError = anyDbError;
+            dbDone = true;
+            renderIfReady();
+        }
+
         if (currentGroupfolderId) {
             fetchGroupfolderMetadata(currentGroupfolderId, function (err, fields) {
                 if (!err && fields) gfFields = fields;
-                checkDone();
+                dbCheckDone();
             });
         }
 
-        // 2. File-level metadata
         fetchMetadata(currentFileId, currentGroupfolderId, function (err, fields) {
-            if (err) {
-                if (totalCalls === 1) {
-                    showMessage(container, err.message, 'error');
-                    return;
-                }
-            }
+            if (err) anyDbError = err;
             if (fields) fileFields = fields;
-            checkDone();
+            dbCheckDone();
         });
+    }
+
+    // Renders both sections. Document properties always render (when present);
+    // the DB section degrades gracefully to a quiet note when the API is
+    // unreachable (no proxy/JWT yet), instead of a panel-wide red error.
+    function renderPanel(container, docProps, dbFields, dbError) {
+        container.innerHTML = '';
+
+        renderDocumentProperties(container, docProps);
+
+        var hasDocProps = docProps && Object.keys(docProps).length > 0;
+
+        if (dbFields && dbFields.length > 0) {
+            if (hasDocProps) container.appendChild(makeSeparator());
+            renderMetadata(container, dbFields);
+        } else if (dbError) {
+            // API not reachable yet (Phase 2 wires this up). Keep it quiet.
+            if (hasDocProps) container.appendChild(makeSeparator());
+            showInlineNote(container, 'MetaVox database not connected.');
+        } else if (!hasDocProps) {
+            // Nothing from either source.
+            showMessage(container, 'No metadata available for this document.', 'info');
+        }
+    }
+
+    function makeSeparator() {
+        var sep = document.createElement('div');
+        sep.className = 'metavox-separator';
+        return sep;
+    }
+
+    // Read-only section listing the document's own ODF core properties.
+    function renderDocumentProperties(container, props) {
+        if (!props || Object.keys(props).length === 0) return;
+
+        var section = document.createElement('div');
+        section.className = 'metavox-section metavox-section-docprops';
+
+        var header = document.createElement('div');
+        header.className = 'metavox-section-header';
+        header.textContent = 'Document properties';
+        section.appendChild(header);
+
+        var list = document.createElement('div');
+        list.className = 'metavox-fields';
+
+        for (var i = 0; i < CORE_PROPERTIES.length; i++) {
+            var def = CORE_PROPERTIES[i];
+            if (!Object.prototype.hasOwnProperty.call(props, def.key)) continue;
+
+            var row = document.createElement('div');
+            row.className = 'metavox-field';
+
+            var label = document.createElement('div');
+            label.className = 'metavox-field-label';
+            label.textContent = def.label;
+            row.appendChild(label);
+
+            var valueEl = document.createElement('div');
+            valueEl.className = 'metavox-field-value';
+            valueEl.textContent = props[def.key];
+            row.appendChild(valueEl);
+
+            list.appendChild(row);
+        }
+
+        section.appendChild(list);
+        container.appendChild(section);
+    }
+
+    function showInlineNote(container, text) {
+        var note = document.createElement('div');
+        note.className = 'metavox-message metavox-message-info metavox-inline-note';
+        note.textContent = text;
+        container.appendChild(note);
     }
 
     function fetchGroupfolderMetadata(groupfolderId, callback) {
@@ -268,13 +430,11 @@
 
     // ─── Rendering ─────────────────────────────────────────────────────
 
+    // Renders the MetaVox database fields. Appends to the container (the
+    // caller, renderPanel, owns clearing and ordering) and is only invoked
+    // when there is at least one field, so it has no empty-state branch.
     function renderMetadata(container, fields) {
-        container.innerHTML = '';
-
-        if (!fields || fields.length === 0) {
-            showMessage(container, 'No metadata fields configured for this file.', 'info');
-            return;
-        }
+        if (!fields || fields.length === 0) return;
 
         // Split into groupfolder fields (read-only, from gf metadata endpoint)
         // and item fields (editable, from file metadata endpoint)
@@ -347,10 +507,6 @@
 
             itemSection.appendChild(list);
             container.appendChild(itemSection);
-        }
-
-        if (gfFields.length === 0 && itemFields.length === 0) {
-            showMessage(container, 'No metadata fields configured for this file.', 'info');
         }
     }
 

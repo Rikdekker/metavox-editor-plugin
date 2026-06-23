@@ -173,6 +173,24 @@ body {
     margin: 12px 0;
 }
 
+/* Document properties: read-only section sourced from the file's own ODF
+   metadata (travels with the document). Header is not collapsible. */
+.metavox-section-docprops .metavox-section-header {
+    cursor: default;
+}
+
+.metavox-section-docprops .metavox-field-value {
+    color: var(--text-secondary);
+}
+
+/* Quiet inline note (e.g. "MetaVox database not connected") — sits below the
+   document properties without taking over the whole panel. */
+.metavox-inline-note {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 /* ─── Fields ────────────────────────────────────────────────────── */
 
 .metavox-fields {

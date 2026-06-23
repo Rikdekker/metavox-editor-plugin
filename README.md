@@ -1,82 +1,31 @@
-# MetaVox Editor Plugin
+# MetaVox Editor Integrations
 
-A document editor plugin that displays and edits [MetaVox](https://github.com/Rikdekker/MetaVox) metadata in a right-side panel when editing documents through Euro-Office or ONLYOFFICE.
+Integrations that surface [MetaVox](https://github.com/Rikdekker/MetaVox) document metadata
+while editing a file in Nextcloud. **Each document editor needs a different mechanism**, so
+the repo is split by platform:
 
-![MetaVox Editor Plugin](screenshots/metavox-plugin.png)
+| Folder | Editor | Status | Mechanism |
+|--------|--------|--------|-----------|
+| [`onlyoffice/`](onlyoffice/) | ONLYOFFICE / Euro-Office | ✅ Working (v0.3) | ONLYOFFICE plugin SDK — a `panelRight` panel **inside** the editor |
+| [`collabora/`](collabora/) | Collabora Online / Nextcloud Office | 📐 Design only — not built | Host-level (WOPI postMessage + NC Files sidebar). See its README |
 
-## Overview
+## Why one plugin can't cover both
 
-When users edit documents in Nextcloud using Euro-Office DocumentServer (or ONLYOFFICE), this plugin shows the file's MetaVox metadata fields in a panel on the right side of the editor. Click any value to edit it inline.
+The two editors have fundamentally different extension models:
 
-![Inline editing](screenshots/metavox-editing.gif)
+- **ONLYOFFICE / Euro-Office** (Euro-Office is an ONLYOFFICE fork) expose a **plugin SDK**.
+  Your own HTML/JS runs *inside* the editor as a docked panel (`window.Asc.plugin.*`,
+  manifest with `guid` + `"type": "panelRight"`). That is what [`onlyoffice/`](onlyoffice/) uses.
+- **Collabora Online** uses **WOPI + postMessage** between the editor iframe and the host.
+  The host can insert toolbar buttons (`Insert_Button`), react to clicks (`Button_Clicked`),
+  and draw its own UI *outside/over* the iframe — but there is **no API to inject a custom
+  panel with fields inside the editor**. So the ONLYOFFICE plugin cannot be ported; a
+  Collabora integration must live at the host level (in/around Nextcloud's `richdocuments`),
+  reusing MetaVox's existing Vue metadata form.
 
-**Requires:**
-- Nextcloud with MetaVox app (>= 2.0.0-beta.3)
-- Euro-Office DocumentServer or ONLYOFFICE Document Server
-- ONLYOFFICE Nextcloud connector app
-- Reverse proxy (Nginx Proxy Manager or plain nginx)
-
-## Quick start
-
-1. Mount the plugin in the DocumentServer container (volume mount)
-2. Configure a reverse proxy that forwards `/metavox-api/` to the Nextcloud MetaVox OCS API
-3. Open a document from Nextcloud → click Plugins → MetaVox Metadata
-
-See [docs/setup.md](docs/setup.md) for detailed instructions.
-
-## How it works
-
-1. User opens a document from Nextcloud in Euro-Office
-2. Plugin reads `Asc.plugin.info.documentCallbackUrl`
-3. Decodes the JWT token to extract the Nextcloud `fileId`
-4. Fetches metadata via `/metavox-api/files/{fileId}/metadata` (same-origin reverse proxy)
-5. Renders field labels and values in the panel
-
-See [docs/architecture.md](docs/architecture.md) for the full technical overview.
-
-## Supported field types
-
-| Type | Display |
-|------|---------|
-| text, textarea | Plain text |
-| number | Number |
-| date | Localized date |
-| select | Selected option |
-| multiselect | Pill tags |
-| checkbox | Visual checkmark |
-| url | Clickable link |
-| user | User ID |
-| filelink | File reference |
-
-## Plugin structure
-
-```
-metavox-editor-plugin/
-├── config.json          Plugin manifest (panelRight type)
-├── index.html           Panel HTML with refresh button
-├── plugin.js            Core logic: JWT detection, API, rendering
-├── styles.css           Panel styling (theme-aware)
-├── vendor/
-│   └── plugins.js       ONLYOFFICE plugin SDK (bundled)
-├── resources/
-│   └── icon.svg         Toolbar icon
-└── docs/
-    ├── setup.md          Installation & configuration
-    ├── architecture.md   How it works (developer reference)
-    └── troubleshooting.md Common problems & solutions
-```
-
-## Troubleshooting
-
-See [docs/troubleshooting.md](docs/troubleshooting.md).
-
-## Roadmap
-
-- [x] **v0.1** — Basic scaffold
-- [x] **v0.2** — File ID detection via JWT, reverse proxy, improved UI
-- [ ] **v0.3** — Inline editing of metadata fields from the panel
-- [ ] **v0.4** — OOXML custom properties sync (embed metadata in the document)
+See [`collabora/README.md`](collabora/README.md) for the two viable host-level approaches
+(Files-sidebar tab vs. toolbar-button overlay) and the recommendation.
 
 ## License
 
-AGPL-3.0 — same as Euro-Office DocumentServer and MetaVox.
+AGPL-3.0 — same as Euro-Office DocumentServer, Collabora Online, and MetaVox.
