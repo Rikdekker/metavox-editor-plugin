@@ -10,12 +10,22 @@
     var currentGroupfolderId = null;
     var currentFields = [];
 
+    // Per-user auth injected by the connector via editorConfig.plugins.options.
+    // When present, the plugin calls the MetaVox OCS v2 API cross-origin with a
+    // Bearer token (no proxy, no shared account). When absent, it falls back to
+    // the relative /metavox-api/ dev proxy path.
+    var PLUGIN_GUID = 'asc.{b5c3e4f2-7a1d-4e8f-9c6b-2d3f5a8e1b7c}';
+    var authToken = null;
+    var ncBaseUrl = null;
+
     // ─── Plugin Lifecycle ──────────────────────────────────────────────
 
     window.Asc.plugin.init = function () {
         var jwtData = getJwtPayload();
         currentFileId = jwtData ? String(jwtData.fileId) : null;
         currentFilePath = jwtData ? jwtData.filePath : null;
+
+        readAuthOptions();
 
         initAutoShowToggle();
 
@@ -121,6 +131,38 @@
         }
     }
 
+    // ─── Auth (Bearer token from the connector) ───────────────────────
+
+    // Read {authToken, ncBaseUrl} the connector injected for this plugin.
+    function readAuthOptions() {
+        try {
+            var opts = window.Asc.plugin.info && window.Asc.plugin.info.options;
+            var mine = opts && opts[PLUGIN_GUID];
+            if (mine && mine.authToken) {
+                authToken = mine.authToken;
+                ncBaseUrl = (mine.ncBaseUrl || '').replace(/\/+$/, '');
+            }
+        } catch (e) { /* fall back to dev proxy */ }
+    }
+
+    function hasToken() { return !!(authToken && ncBaseUrl); }
+
+    // Build the API URL. With a token: absolute OCS v2 against Nextcloud.
+    // Without: the relative dev-proxy path (interim).
+    function buildApiUrl(path) {
+        if (hasToken()) {
+            return ncBaseUrl + '/ocs/v2.php/apps/metavox/api/v2' + path + '?format=json';
+        }
+        return '/metavox-api' + path + '?format=json';
+    }
+
+    function applyAuthHeaders(xhr) {
+        if (hasToken()) {
+            xhr.setRequestHeader('Authorization', 'Bearer ' + authToken);
+            xhr.setRequestHeader('OCS-APIREQUEST', 'true');
+        }
+    }
+
     // ─── JWT + Groupfolder Detection ──────────────────────────────────
 
     function getJwtPayload() {
@@ -170,7 +212,8 @@
         showLoading(container);
 
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', '/metavox-api/groupfolders?format=json', true);
+        xhr.open('GET', buildApiUrl('/groupfolders'), true);
+        applyAuthHeaders(xhr);
         xhr.timeout = API_TIMEOUT;
 
         xhr.onreadystatechange = function () {
@@ -202,15 +245,16 @@
 
     function fetchMetadata(fileId, groupfolderId, callback, retryCount) {
         retryCount = retryCount || 0;
-        var apiUrl;
-        if (groupfolderId) {
-            apiUrl = '/metavox-api/groupfolders/' + groupfolderId + '/files/' + fileId + '/metadata?format=json';
-        } else {
-            apiUrl = '/metavox-api/files/' + fileId + '/metadata?format=json';
+        if (!groupfolderId) {
+            // v2 is groupfolder-scoped; without a gf there is nothing to fetch.
+            callback(null, []);
+            return;
         }
+        var url = buildApiUrl('/groupfolders/' + groupfolderId + '/files/' + fileId + '/metadata');
 
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', apiUrl, true);
+        xhr.open('GET', url, true);
+        applyAuthHeaders(xhr);
         xhr.timeout = API_TIMEOUT;
 
         xhr.onreadystatechange = function () {
@@ -242,17 +286,17 @@
     }
 
     function saveField(fileId, fieldName, value, callback) {
-        var apiUrl;
-        if (currentGroupfolderId) {
-            apiUrl = '/metavox-api/groupfolders/' + currentGroupfolderId + '/files/' + fileId + '/metadata?format=json';
-        } else {
-            apiUrl = '/metavox-api/files/' + fileId + '/metadata?format=json';
+        if (!currentGroupfolderId) {
+            callback(new Error('No team folder for this file.'));
+            return;
         }
+        var url = buildApiUrl('/groupfolders/' + currentGroupfolderId + '/files/' + fileId + '/metadata');
         var body = { metadata: {} };
         body.metadata[fieldName] = value;
 
         var xhr = new XMLHttpRequest();
-        xhr.open('POST', apiUrl, true);
+        xhr.open('POST', url, true);
+        applyAuthHeaders(xhr);
         xhr.timeout = API_TIMEOUT;
         xhr.setRequestHeader('Content-Type', 'application/json');
 
@@ -260,6 +304,8 @@
             if (xhr.readyState !== 4) return;
             if (xhr.status === 200) {
                 callback(null);
+            } else if (xhr.status === 401) {
+                callback(new Error('Session expired — reopen the document.'));
             } else {
                 callback(new Error('Save failed (HTTP ' + (xhr.status || 'network') + ')'));
             }
@@ -445,10 +491,9 @@
     }
 
     function fetchGroupfolderMetadata(groupfolderId, callback) {
-        var apiUrl = '/metavox-api/groupfolders/' + groupfolderId + '/metadata?format=json';
-
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', apiUrl, true);
+        xhr.open('GET', buildApiUrl('/groupfolders/' + groupfolderId + '/metadata'), true);
+        applyAuthHeaders(xhr);
         xhr.timeout = API_TIMEOUT;
 
         xhr.onreadystatechange = function () {
