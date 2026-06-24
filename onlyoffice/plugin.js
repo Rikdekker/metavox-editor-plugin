@@ -134,10 +134,20 @@
     // ─── Auth (Bearer token from the connector) ───────────────────────
 
     // Read {authToken, ncBaseUrl} the connector injected for this plugin.
+    // The integrator passes these via editorConfig.plugins.options keyed by the
+    // plugin GUID, but Euro-Office delivers the per-plugin object UNWRAPPED as
+    // Asc.plugin.info.options (no GUID/"all" layer). Handle both shapes.
     function readAuthOptions() {
         try {
-            var opts = window.Asc.plugin.info && window.Asc.plugin.info.options;
-            var mine = opts && opts[PLUGIN_GUID];
+            var info = window.Asc.plugin.info || {};
+            var opts = info.options;
+            if (!opts) return;
+            // Euro-Office delivers the per-plugin object UNWRAPPED as info.options
+            // (no GUID/"all" layer); handle both shapes.
+            var mine = (opts.authToken ? opts : null)
+                || opts[PLUGIN_GUID]
+                || opts['all']
+                || null;
             if (mine && mine.authToken) {
                 authToken = mine.authToken;
                 ncBaseUrl = (mine.ncBaseUrl || '').replace(/\/+$/, '');
@@ -147,19 +157,24 @@
 
     function hasToken() { return !!(authToken && ncBaseUrl); }
 
-    // Build the API URL. With a token: absolute OCS v2 against Nextcloud.
-    // Without: the relative dev-proxy path (interim).
+    // Build the API URL. With a token: absolute OCS v2 against Nextcloud, with
+    // the token as a QUERY PARAM (not the Authorization header). This keeps the
+    // cross-origin request "simple" so the browser does NOT send a CORS
+    // preflight — Nextcloud's OCS router returns 405 for OPTIONS, so a preflight
+    // would block the call. Without a token: the relative dev-proxy path.
     function buildApiUrl(path) {
         if (hasToken()) {
-            return ncBaseUrl + '/ocs/v2.php/apps/metavox/api/v2' + path + '?format=json';
+            return ncBaseUrl + '/ocs/v2.php/apps/metavox/api/v2' + path
+                + '?format=json&access_token=' + encodeURIComponent(authToken);
         }
         return '/metavox-api' + path + '?format=json';
     }
 
+    // No custom auth headers in token mode (they would trigger a CORS preflight).
+    // Kept for the dev-proxy path, where same-origin needs OCS-APIREQUEST.
     function applyAuthHeaders(xhr) {
-        if (hasToken()) {
-            xhr.setRequestHeader('Authorization', 'Bearer ' + authToken);
-            xhr.setRequestHeader('OCS-APIREQUEST', 'true');
+        if (!hasToken()) {
+            // dev proxy is same-origin; nothing required here.
         }
     }
 
@@ -193,8 +208,16 @@
         var subtitle = document.querySelector('.metavox-subtitle');
         if (subtitle) subtitle.textContent = 'File ID: ' + currentFileId;
 
+        // With a Bearer token the server resolves the team folder from the
+        // fileId itself (robust — no fragile path-name guessing, works for any
+        // file in any team folder regardless of its editor path or format).
+        if (hasToken()) {
+            loadMetadata();
+            return;
+        }
+
+        // Dev-proxy fallback only: guess the groupfolder from the document path.
         if (!currentFilePath) {
-            // No filePath — try without groupfolder
             loadMetadata();
             return;
         }
@@ -245,12 +268,16 @@
 
     function fetchMetadata(fileId, groupfolderId, callback, retryCount) {
         retryCount = retryCount || 0;
-        if (!groupfolderId) {
-            // v2 is groupfolder-scoped; without a gf there is nothing to fetch.
+        var url;
+        if (hasToken()) {
+            // Server resolves the team folder from the fileId.
+            url = buildApiUrl('/files/' + fileId + '/metadata');
+        } else if (groupfolderId) {
+            url = buildApiUrl('/groupfolders/' + groupfolderId + '/files/' + fileId + '/metadata');
+        } else {
             callback(null, []);
             return;
         }
-        var url = buildApiUrl('/groupfolders/' + groupfolderId + '/files/' + fileId + '/metadata');
 
         var xhr = new XMLHttpRequest();
         xhr.open('GET', url, true);
@@ -286,19 +313,23 @@
     }
 
     function saveField(fileId, fieldName, value, callback) {
-        if (!currentGroupfolderId) {
+        var url;
+        if (hasToken()) {
+            url = buildApiUrl('/files/' + fileId + '/metadata');
+        } else if (currentGroupfolderId) {
+            url = buildApiUrl('/groupfolders/' + currentGroupfolderId + '/files/' + fileId + '/metadata');
+        } else {
             callback(new Error('No team folder for this file.'));
             return;
         }
-        var url = buildApiUrl('/groupfolders/' + currentGroupfolderId + '/files/' + fileId + '/metadata');
-        var body = { metadata: {} };
-        body.metadata[fieldName] = value;
-
         var xhr = new XMLHttpRequest();
         xhr.open('POST', url, true);
         applyAuthHeaders(xhr);
         xhr.timeout = API_TIMEOUT;
-        xhr.setRequestHeader('Content-Type', 'application/json');
+        // Form-encoded body keeps the request "simple" (no CORS preflight).
+        // NC's request->getParam parses metadata[field]=value into an array.
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+        var body = 'metadata[' + encodeURIComponent(fieldName) + ']=' + encodeURIComponent(value);
 
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== 4) return;
@@ -312,7 +343,7 @@
         };
 
         xhr.ontimeout = function () { callback(new Error('Save timed out.')); };
-        xhr.send(JSON.stringify(body));
+        xhr.send(body);
     }
 
     // ─── Main Flow ─────────────────────────────────────────────────────
@@ -390,32 +421,32 @@
         var core = (docProps && docProps.core) || {};
         var embedded = (docProps && docProps.metavox) || [];
         var hasCore = Object.keys(core).length > 0;
-        var hasEmbedded = embedded.length > 0;
+        var hasDb = !!(dbFields && dbFields.length > 0);
         var anyAbove = false;
 
-        // 1. MetaVox metadata embedded in the document (read JWT-free via the
-        //    custom-property index). This is the metadata that travels with the file.
-        if (hasEmbedded) {
+        // 1. MetaVox database fields — the LIVE, editable source. Primary section.
+        if (hasDb) {
+            renderMetadata(container, dbFields);
+            anyAbove = true;
+        } else if (embedded.length > 0) {
+            // Fallback ONLY when the DB is unreachable / file not in a team folder:
+            // show the read-only metadata embedded in the document. Not shown
+            // alongside the DB fields (it would duplicate the same values).
             renderEmbeddedMetavox(container, embedded);
+            anyAbove = true;
+        } else if (dbError) {
+            showInlineNote(container, 'MetaVox database not connected.');
             anyAbove = true;
         }
 
-        // 2. The document's own standard (core) properties.
+        // 2. The document's own standard (core) properties — always read-only.
         if (hasCore) {
             if (anyAbove) container.appendChild(makeSeparator());
             renderCoreProperties(container, core);
             anyAbove = true;
         }
 
-        // 3. The MetaVox database fields (live, editable) — needs the API (JWT phase).
-        if (dbFields && dbFields.length > 0) {
-            if (anyAbove) container.appendChild(makeSeparator());
-            renderMetadata(container, dbFields);
-        } else if (dbError && !hasEmbedded) {
-            // Only nag about the DB when we couldn't show embedded metadata either.
-            if (anyAbove) container.appendChild(makeSeparator());
-            showInlineNote(container, 'MetaVox database not connected.');
-        } else if (!anyAbove) {
+        if (!anyAbove) {
             showMessage(container, 'No metadata available for this document.', 'info');
         }
     }
@@ -591,12 +622,10 @@
             var itemSection = document.createElement('div');
             itemSection.className = 'metavox-section metavox-section-items';
 
-            if (gfFields.length > 0) {
-                var itemHeader = document.createElement('div');
-                itemHeader.className = 'metavox-section-header';
-                itemHeader.textContent = 'Document Metadata';
-                itemSection.appendChild(itemHeader);
-            }
+            var itemHeader = document.createElement('div');
+            itemHeader.className = 'metavox-section-header';
+            itemHeader.textContent = 'Document metadata';
+            itemSection.appendChild(itemHeader);
 
             var list = document.createElement('div');
             list.className = 'metavox-fields';
