@@ -703,11 +703,11 @@
                 } catch (e) { container.textContent = String(value); }
                 break;
             case 'multiselect':
-                var tags = String(value).split(';#').filter(function (t) { return t.trim(); });
+                var tags = MetaVoxCore.decodeMultiselect(value);
                 for (var i = 0; i < tags.length; i++) {
                     var tag = document.createElement('span');
                     tag.className = 'metavox-tag';
-                    tag.textContent = tags[i].trim();
+                    tag.textContent = tags[i];
                     container.appendChild(tag);
                 }
                 break;
@@ -718,12 +718,12 @@
     }
 
     function renderCheckboxValue(container, field) {
-        var isChecked = field.value === '1' || field.value === 'true' || field.value === true;
+        var isChecked = MetaVoxCore.decodeCheckbox(field.value);
         var check = document.createElement('span');
         check.className = 'metavox-checkbox metavox-editable ' + (isChecked ? 'metavox-checkbox-on' : 'metavox-checkbox-off');
         check.textContent = isChecked ? '\u2713' : '\u2717';
         check.addEventListener('click', function () {
-            var newVal = isChecked ? '0' : '1';
+            var newVal = MetaVoxCore.encodeCheckbox(!isChecked);
             check.classList.add('metavox-saving');
             saveField(currentFileId, field.field_name, newVal, function (err) {
                 check.classList.remove('metavox-saving');
@@ -870,7 +870,7 @@
         emptyOpt.textContent = '\u2014';
         select.appendChild(emptyOpt);
 
-        var options = field.field_options || [];
+        var options = MetaVoxCore.parseSelectOptions(field.field_options);
         for (var i = 0; i < options.length; i++) {
             var opt = document.createElement('option');
             opt.value = options[i];
@@ -897,8 +897,8 @@
         var wrap = document.createElement('div');
         wrap.className = 'metavox-editor metavox-multiselect-editor';
 
-        var selected = currentValue ? String(currentValue).split(';#').filter(function (t) { return t.trim(); }) : [];
-        var options = field.field_options || [];
+        var selected = MetaVoxCore.decodeMultiselect(currentValue);
+        var options = MetaVoxCore.parseSelectOptions(field.field_options);
 
         for (var i = 0; i < options.length; i++) {
             (function (optionValue) {
@@ -915,7 +915,7 @@
                     } else {
                         selected = selected.filter(function (s) { return s !== optionValue; });
                     }
-                    var newValue = selected.join(';#');
+                    var newValue = MetaVoxCore.encodeMultiselect(selected);
                     commitEdit(wrap.closest('.metavox-field'), field, newValue);
                 });
 
