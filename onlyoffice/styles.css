@@ -537,3 +537,11 @@ body {
 .metavox-setup-btn:hover {
     opacity: 0.9;
 }
+
+/* Multiline editor for textarea fields */
+.metavox-edit-textarea {
+    width: 100%;
+    min-height: 72px;
+    resize: vertical;
+    font-family: inherit;
+}

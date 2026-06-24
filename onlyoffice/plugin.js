@@ -754,7 +754,7 @@
 
         var editor;
 
-        switch (field.field_type) {
+        switch (MetaVoxCore.normalizeType(field.field_type)) {
             case 'select':
                 editor = createSelectEditor(field, oldValue);
                 break;
@@ -770,6 +770,13 @@
             case 'url':
                 editor = createInputEditor(field, oldValue, 'url');
                 break;
+            case 'textarea':
+                editor = createTextareaEditor(field, oldValue);
+                break;
+            // user / usergroup / filelink: rich pickers need the Nextcloud page
+            // context (OC.dialogs.filepicker, NcAvatar) which the cross-origin
+            // editor iframe lacks. Fall through to a plain text editor so the raw
+            // stored value (e.g. "uid" or "fileid:/path") is still viewable/editable.
             default:
                 editor = createInputEditor(field, oldValue, 'text');
                 break;
@@ -857,6 +864,40 @@
         return wrap;
     }
 
+    function createTextareaEditor(field, currentValue) {
+        var wrap = document.createElement('div');
+        wrap.className = 'metavox-editor';
+
+        var ta = document.createElement('textarea');
+        ta.className = 'metavox-edit-input metavox-edit-textarea';
+        ta.rows = 4;
+        ta.value = currentValue || '';
+
+        // Enter inserts a newline (multiline); Ctrl/Cmd+Enter commits, Esc cancels.
+        ta.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                commitEdit(wrap.closest('.metavox-field'), field, ta.value);
+            } else if (e.key === 'Escape') {
+                cancelEditing(wrap.closest('.metavox-field'), field);
+            }
+        });
+        ta.addEventListener('blur', function () {
+            setTimeout(function () {
+                if (document.activeElement !== ta) {
+                    if (ta.value !== (currentValue || '')) {
+                        commitEdit(wrap.closest('.metavox-field'), field, ta.value);
+                    } else {
+                        cancelEditing(wrap.closest('.metavox-field'), field);
+                    }
+                }
+            }, 150);
+        });
+
+        wrap.appendChild(ta);
+        return wrap;
+    }
+
     function createSelectEditor(field, currentValue) {
         var wrap = document.createElement('div');
         wrap.className = 'metavox-editor';
@@ -933,13 +974,23 @@
         var wrap = document.createElement('div');
         wrap.className = 'metavox-editor';
 
+        // Fields with includeTime store/expect a full floating ISO datetime
+        // (YYYY-MM-DDTHH:mm:ss); use datetime-local and pad to seconds on save.
+        // Otherwise a plain date (YYYY-MM-DD).
+        var withTime = MetaVoxCore.dateIncludesTime(field);
+
         var input = document.createElement('input');
-        input.type = 'date';
+        input.type = withTime ? 'datetime-local' : 'date';
         input.className = 'metavox-edit-input';
-        input.value = currentValue || '';
+        // datetime-local wants YYYY-MM-DDTHH:mm (16 chars); trim stored seconds.
+        input.value = withTime ? String(currentValue || '').slice(0, 16) : (currentValue || '');
 
         input.addEventListener('change', function () {
-            commitEdit(wrap.closest('.metavox-field'), field, input.value);
+            var v = input.value;
+            if (v && withTime) {
+                v = MetaVoxCore.padDatetimeLocal(v); // YYYY-MM-DDTHH:mm -> :mm:ss
+            }
+            commitEdit(wrap.closest('.metavox-field'), field, v);
         });
 
         input.addEventListener('keydown', function (e) {
